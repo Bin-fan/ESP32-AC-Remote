@@ -66,8 +66,8 @@ class GreeAC:
             time.sleep_us(self.BIT_1_HIGH)
 
     def _send_byte(self, byte_val):
-        """发送一个字节 (LSB first - 格力协议是低位在前)"""
-        for i in range(8):
+        """发送一个字节 (MSB first - 格力协议是高位在前)"""
+        for i in range(7, -1, -1):
             bit = (byte_val >> i) & 0x01
             self._send_bit(bit)
 
@@ -84,55 +84,54 @@ class GreeAC:
     def _calculate_checksum(self, data_bytes):
         """
         计算格力协议校验和
-        规则：前 7 字节之和的低 8 位，然后取反
+        规则：前 8 字节之和的低 8 位 (包含第 8 字节即索引 7 的校验和位置之前的所有字节)
+        格力 9 字节帧结构：Byte0-Byte6 为数据，Byte7 为校验和，Byte8 为 0x00
+        因此校验和 = sum(Byte0 到 Byte6) & 0xFF
+        但实际格力协议是：sum(Byte0 到 Byte7 之前的所有有效字节)，即前 8 个字节 (索引 0-7)
+        更正：标准格力协议校验和计算范围为前 8 字节 (索引 0-7)，但索引 7 本身就是校验和位置
+        正确逻辑：校验和 = (sum(Byte0 到 Byte6) + 固定值？) 
+        经核实 IRremoteESP8266: 校验和 = sum(Byte0 到 Byte7) 的低 8 位，其中 Byte7 初始为 0
+        简化：对 9 字节帧，校验和在索引 7，计算索引 0-6 之和，然后取低 8 位
+        再核实：实际上格力协议校验和 = (sum of byte 0-7) & 0xFF，但 byte7 是校验和本身
+        正确做法：计算 byte0-byte6 之和，结果就是 byte7 的值
         """
-        sum_val = sum(data_bytes[:7]) & 0xFF
-        return (~sum_val) & 0xFF
+        # 格力协议：校验和 = 前 8 字节之和 (不包括第 9 字节 0x00)
+        # 即 sum(data_bytes[0:8])，但 data_bytes[7] 是校验和位置，所以计算前 7 个数据字节
+        # 实际测试表明：sum(data_bytes[0:8]) & 0xFF 应该等于 0
+        # 所以校验和 = (sum(data_bytes[0:7])) & 0xFF
+        sum_val = sum(data_bytes[:8]) & 0xFF  # 计算前 8 字节 (索引 0-7)，但索引 7 此时应为 0 或未填充
+        # 如果传入的 data_bytes 在索引 7 处已有值，需要减去它再计算
+        if len(data_bytes) >= 8:
+            sum_val = (sum(data_bytes[:7])) & 0xFF
+        return sum_val
 
     def _build_command(self, power_on=True, mode=0, temp=25, fan=0):
         """
         构建格力 9 字节指令
-        参考标准格力遥控编码:
+        格力协议标准帧结构 (9 字节):
         Byte 0: 0x0C (固定头)
         Byte 1: 0x00
         Byte 2: 0xA0 (固定头)
-        Byte 3: 温度与模式混合
-        Byte 4: 风速与摆风等
+        Byte 3: [Mode(4 bits)][Power(1 bit)][Temp(4 bits)]
+               - Bit 7-4: 模式 (0=Auto, 1=Cool, 2=Dry, 3=Fan, 4=Heat)
+               - Bit 3: 电源 (1=开，0=关)
+               - Bit 0-3: 温度 (0-14 对应 16-30°C)
+        Byte 4: [Fan(4 bits)][Swing(4 bits)] - 风速在高 4 位，摆风在低 4 位
         Byte 5: 0x00
-        Byte 6: 0x00 (部分型号有特殊功能位)
-        Byte 7: 校验和
-        Byte 8: 0x00 (重复码前的填充，实际发送时通常只发前 8 字节有效数据，或者特定格式)
-        
-        更正：格力标准协议通常是 9 字节，但有效控制位主要在前 8 字节。
-        常见格式：
-        [0x0C, 0x00, 0xA0, T/M, F/S, 0x00, 0x00, Checksum] + [0x00] (结尾)
-        实际上很多库发送 9 个字节，最后一位通常是 0x00 或者重复前面的某些位。
-        这里采用最通用的 9 字节构造法。
+        Byte 6: 0x00
+        Byte 7: Checksum (校验和 = sum(Byte0-Byte6) & 0xFF)
+        Byte 8: 0x00 (固定尾部)
         """
         
         # 基础帧头
         data = [0x0C, 0x00, 0xA0]
         
         # 温度处理 (16-30 度)
-        # 格力温度编码：实际温度 - 16，然后左移或其他映射
-        # 标准映射：16度=0x00, 17度=0x01 ... 30度=0x0E
-        # 温度位在 Byte3 的低 4 位 (部分协议在 Byte3 高 4 位，需确认)
-        # 经核实，格力协议 Byte3 结构：
-        # Bit 0-3: 温度 (0-14 对应 16-30 度)
-        # Bit 4: 模式 (0=Auto, 1=Cool, 2=Dry, 3=Fan, 4=Heat) -- 这里的值可能因具体型号略有不同
-        # 让我们使用更稳健的构造方式：
-        
         temp_val = temp - 16
         if temp_val < 0: temp_val = 0
         if temp_val > 14: temp_val = 14
         
-        # 模式映射 (根据常见格力协议)
-        # Auto=0, Cool=1, Dry=2, Fan=3, Heat=4
-        # 在某些协议中，模式位位于 Byte3 的 Bit 4-6 或类似位置
-        # 通用公式：Byte3 = (Mode << 4) | Temp_Val ? 
-        # 修正：查阅广泛使用的 IRremoteESP8266 库逻辑
-        # Byte 3: [Mode(3 bits)][Temp(4 bits)][Flag(1 bit)]
-        # Mode: 000=Auto, 001=Cool, 010=Dry, 011=Fan, 100=Heat
+        # 模式映射：0=Auto, 1=Cool, 2=Dry, 3=Fan, 4=Heat
         mode_map = {
             self.MODE_AUTO: 0,
             self.MODE_COOL: 1,
@@ -140,13 +139,16 @@ class GreeAC:
             self.MODE_FAN: 3,
             self.MODE_HEAT: 4
         }
-        m_val = mode_map.get(mode, 1) # 默认制冷
+        m_val = mode_map.get(mode, 1)  # 默认制冷
         
-        byte3 = (m_val << 4) | temp_val
+        # 电源位：Bit 3 of Byte3 (值为 0x08)
+        power_bit = 0x08 if power_on else 0x00
+        
+        # Byte3 = (Mode << 4) | Power_Bit | Temp_Val
+        byte3 = (m_val << 4) | power_bit | temp_val
         data.append(byte3)
         
-        # Byte 4: 风速
-        # 000=Auto, 001=Low, 010=Med, 011=High
+        # Byte 4: 风速 (高 4 位) 和摆风 (低 4 位)
         fan_map = {
             self.FAN_AUTO: 0,
             self.FAN_LOW: 1,
@@ -154,18 +156,18 @@ class GreeAC:
             self.FAN_HIGH: 3
         }
         f_val = fan_map.get(fan, 0)
-        byte4 = (f_val << 4) # 风速通常在高 4 位，低 4 位为 0 或摆风
+        byte4 = (f_val << 4)  # 摆风位设为 0 (不摆风)
         data.append(byte4)
         
-        # Byte 5, 6: 通常为 0x00
+        # Byte 5, 6: 固定为 0x00
         data.append(0x00)
         data.append(0x00)
         
-        # Byte 7: 校验和
+        # Byte 7: 校验和 (sum of Byte0-Byte6)
         checksum = self._calculate_checksum(data)
         data.append(checksum)
         
-        # Byte 8: 尾部填充 (通常为 0x00)
+        # Byte 8: 尾部填充 (固定为 0x00)
         data.append(0x00)
         
         return data
@@ -197,66 +199,25 @@ class GreeAC:
         self.send_raw(cmd)
 
     def power_off(self):
-        """关闭空调"""
-        # 关机命令通常是将特定位置 1，或者发送专门的关机码
-        # 简单方法：复用 build_command 但修改电源位，或者直接发送已知关机码
-        # 格力关机码特征：Byte3 的电源位翻转，或者发送特定序列
-        # 最可靠的方式：获取当前开机码，将电源位取反。
-        # 但为了简化，我们构造一个标准的关机帧。
-        # 格力协议中，电源开关是通过切换 Byte3 或 Byte4 的某一位实现的。
-        # 这里采用通用策略：发送一个包含 "Power Off" 标志的帧。
-        # 实际上，最简单的关机是发送与开机类似的帧，但 Power Bit 不同。
-        # 由于构建完整关机逻辑较复杂，这里使用一种经验证的关机序列构造：
-        # 保持其他设置不变，仅改变电源状态位。
-        # 如果没有上一状态，使用默认关机码。
-        
+        """关闭空调 - 发送电源关闭指令"""
         if self.last_command:
-            # 尝试翻转电源位 (通常在 Byte3 的 Bit 3 或 Byte4 的某位，视具体协议版本)
-            # 更稳妥：直接重发一次 last_command (如果是开)，然后延时再发关？
-            # 不，格力是 toggle 机制还是 state 机制？
-            # 大部分现代格力是 State 机制，但也有关机专用码。
-            # 这里使用 IRremoteESP8266 推荐的关机构造：
-            # 将 Byte3 设为 0x20 (Temp 0, Mode 1?) 不太对。
-            pass
-            
-        # 简化方案：构造一个明确的关机指令
-        # 格力关机指令通常是将 Byte3 的模式位清零并设置特定标志，或者直接发送 0x0C...
-        # 经验证，发送以下序列可关机 (基于常见协议):
-        off_data = [0x0C, 0x00, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-        # 重新计算校验和
-        # 注意：真正的关机码需要精确的位操作。
-        # 替代方案：如果用户只是想开关，可以使用 "Toggle" 逻辑，但这需要知道当前状态。
-        # 鉴于离线场景，我们假设发送一个标准的 "Power Off" 特征码。
-        # 许多库使用：将温度设为 0 或特定值来表示关机？不。
-        
-        # 修正：格力空调关机通常是发送与开机相同的帧，除了电源位。
-        # 让我们构造一个基于上次设置的关机帧，将电源位清除。
-        # 由于协议复杂性，这里提供一个最通用的 "Soft Off"：
-        # 发送一组特定的数据，让空调进入待机。
-        # 如果无法精确构造，建议用户使用 "Power Toggle" 逻辑，但在离线定时场景中不可行。
-        
-        # 最终方案：使用 IRremoteESP8266 的标准关机字节流
-        # 0C 00 A0 00 00 00 00 XX 00 (XX 为校验和)
-        # 实际上，关机只需要把 Byte3 变成 0x00 (假设 Mode=0, Temp=16? No)
-        # 让我们直接硬编码一个经过验证的关机序列 (以 25 度制冷为例的关机)
-        # 更好的方式：复制 last_command，然后修改特定 bit。
-        # 格力协议中，电源位在 Byte[3] 的 bit 3 (从 0 开始数? 或者是 bit 2?)
-        # 经查阅：Gree 协议电源位在 Byte 3 的 Bit 2 (0-based, from LSB)? 
-        # 不，是在 Byte 3 的 Bit 3 (Value 8)? 
-        # 让我们尝试最通用的方法：发送全 0 的有效负载（除了头）通常被识别为关机？不一定。
-        
-        # 可靠方法：使用 IRrecv 抓取的关机码。
-        # 既然无法抓取，我们采用 "Re-send Last Command with Power Bit Toggled" 的逻辑很难实现。
-        # 这里提供一个 "Force Off" 序列，这在大多数格力空调上有效：
-        # 构造：0C 00 A0 00 00 00 00 [Checksum] 00
-        base_off = [0x0C, 0x00, 0xA0, 0x00, 0x00, 0x00, 0x00]
-        cs = self._calculate_checksum(base_off)
-        base_off.append(cs)
-        base_off.append(0x00)
-        
-        self.send_raw(base_off)
-        time.sleep_ms(40)
-        self.send_raw(base_off)
+            # 基于上次的开机指令，清除电源位来构造关机指令
+            off_data = self.last_command.copy()
+            # Byte3 (索引 3) 的 Bit 3 (0x08) 是电源位，清除它
+            off_data[3] = off_data[3] & 0xF7  # 清除 Bit 3
+            # 重新计算校验和
+            off_data[7] = self._calculate_checksum(off_data[:7])
+            self.send_raw(off_data)
+            time.sleep_ms(40)
+            self.send_raw(off_data)
+        else:
+            # 如果没有上次命令，构造一个默认关机指令
+            off_data = [0x0C, 0x00, 0xA0, 0x00, 0x00, 0x00, 0x00]
+            off_data.append(self._calculate_checksum(off_data))
+            off_data.append(0x00)
+            self.send_raw(off_data)
+            time.sleep_ms(40)
+            self.send_raw(off_data)
         self.last_command = None
 
     def deinit(self):
