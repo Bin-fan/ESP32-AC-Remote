@@ -3,8 +3,8 @@
 # ===================================================
 
 # WiFi 配置
-WIFI_SSID = "maria"
-WIFI_PASSWORD = "meiling1106"
+WIFI_SSID = ""
+WIFI_PASSWORD = ""
 WIFI_CONNECT_TIMEOUT = 15  # WiFi 连接超时时间（秒）
 
 # NTP 服务器配置
