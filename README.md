@@ -2,10 +2,6 @@
 
 基于 ESP32 和 MicroPython 的智能家居项目，通过红外遥控实现格力空调的自动化定时控制，支持 WiFi 时间同步、节假日识别和调休日管理。
 
-## 项目说明
-
-本项目使用 ESP32 配合 MicroPython、HS-S29P 红外发射模块和 HS-S23P 红外接收模块，实现对格力空调的智能定时控制。系统可每天在指定时间自动开启空调，运行指定时长后自动关闭，并智能识别节假日和调休日。
-
 ### 主要功能
 
 #### 空调控制功能
@@ -65,13 +61,22 @@
 | `WIFI_CONNECT_TIMEOUT` | WiFi 连接超时时间（秒） | `15` |
 | `NTP_SERVER` | NTP 时间服务器 | `"ntp1.aliyun.com"` |
 | `TIMEZONE_OFFSET` | 时区偏移（小时） | `8` (中国 UTC+8) |
+| `TARGET_HOUR` | 空调定时开启时间（小时，24 小时制） | `7` |
+| `TARGET_MINUTE` | 空调定时开启时间（分钟） | `20` |
+| `IR_PIN` | 红外发射模块 GPIO 引脚 | `4` |
+| `AC_MODE` | 空调模式：0=自动，1=制冷，2=除湿，3=送风，4=制热 | `1` |
+| `AC_TEMP` | 目标温度（16-30°C） | `26` |
+| `AC_FAN` | 风速：0=自动，1=低，2=中，3=高 | `0` |
+| `AC_RUN_DURATION` | 空调运行时长（秒） | `300` |
 | `LED_PIN` | LED 指示灯 GPIO 引脚 | `2` |
 
 ### 使用步骤
 
-1. **配置 WiFi 和网络**
-   - 编辑 `config.py` 文件，填入您的 WiFi 名称和密码
+1. **配置所有参数**
+   - 编辑 `config.py` 文件
+   - 填入您的 WiFi 名称和密码
    - 根据需要修改 NTP 服务器和时区设置
+   - 调整空调控制参数：定时时间、运行模式、温度、风速、运行时长等
 
 2. **上传文件到 ESP32**
    - 使用 Thonny、ampy 或其他 MicroPython IDE
@@ -85,7 +90,7 @@
 
 4. **运行空调控制**
    - `main.py` 会自动运行定时任务
-   - 可修改 `main.py` 中的定时时间和空调参数
+   - 如需修改定时参数，编辑 `config.py` 后重启设备
 
 ### 硬件连接
 
@@ -109,6 +114,56 @@ GND     -----> GND
 
 > ⚠️ **注意**: 发射和接收模块不要同时连接到同一个 GPIO 引脚。如需使用接收功能学习遥控码，请暂时断开红外发射模块。
 
+## 快速开始
+
+### 1. 硬件准备
+
+- ESP32 开发板 × 1
+- HS-S29P 红外发射模块 × 1（用于控制空调）
+- HS-S23P 红外接收模块 × 1（可选，用于学习遥控码）
+- 杜邦线若干
+
+### 2. 软件环境
+
+- MicroPython 固件（ESP32 版本）
+- 推荐使用 Thonny IDE 或 rshell 进行代码上传
+
+### 3. 配置步骤
+
+编辑 `config.py` 文件，修改以下配置项：
+
+```python
+# WiFi 配置
+WIFI_SSID = "你的 WiFi 名称"
+WIFI_PASSWORD = "你的 WiFi 密码"
+
+# 空调定时开启时间 (24 小时制)
+TARGET_HOUR = 7           # 目标触发时间（小时）
+TARGET_MINUTE = 20        # 目标触发时间（分钟）
+
+# 空调控制参数
+IR_PIN = 4                # 红外发射引脚
+AC_MODE = 1               # 0:自动，1:制冷，2:除湿，3:送风，4:制热
+AC_TEMP = 26              # 目标温度 (16-30)
+AC_FAN = 0                # 0:自动，1:低，2:中，3:高
+AC_RUN_DURATION = 300     # 运行时长（秒）
+```
+
+#### 配置节假日 (`main.py`)
+编辑 `main.py` 中的 `HOLIDAYS` 和 `ADJUSTED_WORKDAYS` 列表以匹配当前年份的放假安排。
+
+### 4. 上传代码
+
+将以下文件上传到 ESP32：
+- `boot.py`
+- `main.py`
+- `gree_ac_control.py`
+
+> `ir_receiver_test.py` 仅在需要学习红外遥控码时上传使用。
+
+### 5. 运行
+
+ESP32 重启后会自动执行 `boot.py` 连接 WiFi 并同步时间，然后运行 `main.py` 开始定时监控。
 
 ## 格力红外协议说明
 
@@ -120,14 +175,43 @@ GND     -----> GND
 - **前导码**: 9ms 低 + 4.5ms 高
 - **数据包**: 9 字节（第 7 字节为校验和）
 
-## 定时任务逻辑
-系统每分钟检查一次当前时间，当满足以下条件时触发空调：
-1. 当前时间等于设定的目标时间
+## 使用示例
+
+### 基本控制
+```python
+from gree_ac_control import GreeAC
+
+# 初始化（GPIO 4）
+ac = GreeAC(pin_num=4)
+
+# 开机（制冷模式，26°C，自动风速）
+# 注意：格力协议模式定义：0=自动，1=制冷，2=除湿，3=送风，4=制热
+ac.turn_on(mode=1, temp=26, fan=0)
+
+# 关机
+ac.turn_off()
+```
+
+### 使用 config.py 配置参数
+```python
+import config
+from gree_ac_control import GreeAC
+
+# 从配置文件读取参数
+ac = GreeAC(pin_num=config.IR_PIN)
+
+# 使用配置的参数启动空调
+ac.turn_on(mode=config.AC_MODE, temp=config.AC_TEMP, fan=config.AC_FAN)
+```
+
+### 定时任务逻辑
+系统每 30 秒检查一次当前时间，当满足以下条件时触发空调：
+1. 当前时间等于设定的目标时间（TARGET_HOUR:TARGET_MINUTE）
 2. 今天不是节假日
 3. 如果是周末，必须是调休工作日
 4. 当天尚未触发过
 
-触发后空调将运行设定的时长，然后自动关闭。
+触发后空调将运行设定的时长（AC_RUN_DURATION），然后自动关闭。
 
 ## 注意事项
 
