@@ -109,55 +109,6 @@ GND     -----> GND
 
 > ⚠️ **注意**: 发射和接收模块不要同时连接到同一个 GPIO 引脚。如需使用接收功能学习遥控码，请暂时断开红外发射模块。
 
-## 快速开始
-
-### 1. 硬件准备
-
-- ESP32 开发板 × 1
-- HS-S29P 红外发射模块 × 1（用于控制空调）
-- HS-S23P 红外接收模块 × 1（可选，用于学习遥控码）
-- 杜邦线若干
-
-### 2. 软件环境
-
-- MicroPython 固件（ESP32 版本）
-- 推荐使用 Thonny IDE 或 rshell 进行代码上传
-
-### 3. 配置步骤
-
-#### 修改 WiFi 配置 (`boot.py`)
-```python
-WIFI_SSID = "你的 WiFi 名称"
-WIFI_PASSWORD = "你的 WiFi 密码"
-WIFI_CONNECT_TIMEOUT = 15  # 连接超时时间（秒）
-```
-
-#### 修改定时配置 (`main.py`)
-```python
-TARGET_HOUR = 7           # 目标触发时间（小时，24 小时制）
-TARGET_MINUTE = 20        # 目标触发时间（分钟）
-IR_PIN = 4                # 红外发射引脚
-AC_MODE = 1               # 0:自动，1:制冷，2:除湿，3:送风，4:制热
-AC_TEMP = 26              # 目标温度 (16-30)
-AC_FAN = 0                # 0:自动，1:低，2:中，3:高
-AC_RUN_DURATION = 300     # 运行时长（秒）
-```
-
-#### 配置节假日 (`main.py`)
-编辑 `HOLIDAYS` 和 `ADJUSTED_WORKDAYS` 列表以匹配当前年份的放假安排。
-
-### 4. 上传代码
-
-将以下文件上传到 ESP32：
-- `boot.py`
-- `main.py`
-- `gree_ac_control.py`
-
-> `ir_receiver_test.py` 仅在需要学习红外遥控码时上传使用。
-
-### 5. 运行
-
-ESP32 重启后会自动执行 `boot.py` 连接 WiFi 并同步时间，然后运行 `main.py` 开始定时监控。
 
 ## 格力红外协议说明
 
@@ -169,23 +120,7 @@ ESP32 重启后会自动执行 `boot.py` 连接 WiFi 并同步时间，然后运
 - **前导码**: 9ms 低 + 4.5ms 高
 - **数据包**: 9 字节（第 7 字节为校验和）
 
-## 使用示例
-
-### 基本控制
-```python
-from gree_ac_control import GreeAC
-
-# 初始化（GPIO 4）
-ac = GreeAC(pin_num=4)
-
-# 开机（制冷模式，26°C，自动风速）
-ac.turn_on(mode=1, temp=26, fan=0)
-
-# 关机
-ac.turn_off()
-```
-
-### 定时任务逻辑
+## 定时任务逻辑
 系统每分钟检查一次当前时间，当满足以下条件时触发空调：
 1. 当前时间等于设定的目标时间
 2. 今天不是节假日
