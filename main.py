@@ -19,7 +19,7 @@ AC_RUN_DURATION = 300  # 空调开启后运行时长 (秒)，例如 300秒=5分�
 
 # 初始化空调控制器
 try:
-    ac = GreeAC(pin=IR_PIN)
+    ac = GreeAC(pin_num=IR_PIN)
     print(f"红外空调控制器已初始化 (GPIO {IR_PIN})")
 except Exception as e:
     print(f"红外控制器初始化失败: {e}")
