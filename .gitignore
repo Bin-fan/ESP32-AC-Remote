@@ -1,1 +1,6 @@
-Nothing needs to be added to .gitignore since only a README.md file was modified and no build artifacts, dependencies, or temporary files were detected in the changes.
+# Python 运行时产物
+__pycache__/
+*.pyc
+
+# config.py 填入真实 WiFi 凭据后请勿提交，取消下面一行的注释即可忽略
+# config.py
