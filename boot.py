@@ -3,10 +3,7 @@ import time
 import ntptime
 from machine import RTC
 from machine import Pin
-
-WIFI_SSID = "maria"
-WIFI_PASSWORD = "meiling1106"
-WIFI_CONNECT_TIMEOUT = 15  # WiFi 连接超时时间（秒）
+from config import WIFI_SSID, WIFI_PASSWORD, WIFI_CONNECT_TIMEOUT, NTP_SERVER, TIMEZONE_OFFSET, LED_PIN
 
 def connect_wifi():
     """
@@ -37,10 +34,10 @@ def sync_china_time():
     """
     print("正在从 NTP 服务器同步时间...")
     try:
-        ntptime.host = 'ntp1.aliyun.com'
+        ntptime.host = NTP_SERVER
         
         utc_timestamp = ntptime.time()
-        cst_offset = 8 * 3600
+        cst_offset = TIMEZONE_OFFSET * 3600
         cst_timestamp = utc_timestamp + cst_offset
         time_tuple = time.localtime(cst_timestamp)
         
@@ -73,7 +70,7 @@ def blink_led_and_turn_off(led_pin, duration_sec):
 
 def main():
     # 初始化 LED (ESP32 常见的板载指示灯连接在 GPIO 2 上)
-    led = Pin(2, Pin.OUT)
+    led = Pin(LED_PIN, Pin.OUT)
     led.value(0) # 初始先熄灭
     
     # 逻辑判断：如果 WiFi 连接成功 并且 时间同步成功
