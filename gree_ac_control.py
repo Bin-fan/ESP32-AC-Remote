@@ -27,12 +27,12 @@ class GreeAC:
     BIT_1_HIGH = 1680
     REPEAT_HEAD_HIGH = 2500
     
-    # 模式定义
-    MODE_COOL = 0
-    MODE_DRY = 1
-    MODE_FAN = 2
-    MODE_HEAT = 3
-    MODE_AUTO = 4
+    # 模式定义 (与格力协议值一致，也是 config.py 中 AC_MODE 的取值)
+    MODE_AUTO = 0
+    MODE_COOL = 1
+    MODE_DRY = 2
+    MODE_FAN = 3
+    MODE_HEAT = 4
 
     # 风速定义
     FAN_AUTO = 0
@@ -84,26 +84,10 @@ class GreeAC:
     def _calculate_checksum(self, data_bytes):
         """
         计算格力协议校验和
-        规则：前 8 字节之和的低 8 位 (包含第 8 字节即索引 7 的校验和位置之前的所有字节)
-        格力 9 字节帧结构：Byte0-Byte6 为数据，Byte7 为校验和，Byte8 为 0x00
-        因此校验和 = sum(Byte0 到 Byte6) & 0xFF
-        但实际格力协议是：sum(Byte0 到 Byte7 之前的所有有效字节)，即前 8 个字节 (索引 0-7)
-        更正：标准格力协议校验和计算范围为前 8 字节 (索引 0-7)，但索引 7 本身就是校验和位置
-        正确逻辑：校验和 = (sum(Byte0 到 Byte6) + 固定值？) 
-        经核实 IRremoteESP8266: 校验和 = sum(Byte0 到 Byte7) 的低 8 位，其中 Byte7 初始为 0
-        简化：对 9 字节帧，校验和在索引 7，计算索引 0-6 之和，然后取低 8 位
-        再核实：实际上格力协议校验和 = (sum of byte 0-7) & 0xFF，但 byte7 是校验和本身
-        正确做法：计算 byte0-byte6 之和，结果就是 byte7 的值
+        9 字节帧中 Byte7 为校验和：Byte7 = sum(Byte0..Byte6) & 0xFF
+        （Byte8 固定为 0x00，不参与计算）
         """
-        # 格力协议：校验和 = 前 8 字节之和 (不包括第 9 字节 0x00)
-        # 即 sum(data_bytes[0:8])，但 data_bytes[7] 是校验和位置，所以计算前 7 个数据字节
-        # 实际测试表明：sum(data_bytes[0:8]) & 0xFF 应该等于 0
-        # 所以校验和 = (sum(data_bytes[0:7])) & 0xFF
-        sum_val = sum(data_bytes[:8]) & 0xFF  # 计算前 8 字节 (索引 0-7)，但索引 7 此时应为 0 或未填充
-        # 如果传入的 data_bytes 在索引 7 处已有值，需要减去它再计算
-        if len(data_bytes) >= 8:
-            sum_val = (sum(data_bytes[:7])) & 0xFF
-        return sum_val
+        return sum(data_bytes[:7]) & 0xFF
 
     def _build_command(self, power_on=True, mode=0, temp=25, fan=0):
         """
@@ -131,15 +115,11 @@ class GreeAC:
         if temp_val < 0: temp_val = 0
         if temp_val > 14: temp_val = 14
         
-        # 模式映射：0=Auto, 1=Cool, 2=Dry, 3=Fan, 4=Heat
-        mode_map = {
-            self.MODE_AUTO: 0,
-            self.MODE_COOL: 1,
-            self.MODE_DRY: 2,
-            self.MODE_FAN: 3,
-            self.MODE_HEAT: 4
-        }
-        m_val = mode_map.get(mode, 1)  # 默认制冷
+        # 模式直接取协议值：0=Auto, 1=Cool, 2=Dry, 3=Fan, 4=Heat
+        # （与 config.py 中 AC_MODE 的定义一致，非法值回退为制冷）
+        if not 0 <= mode <= 4:
+            mode = self.MODE_COOL
+        m_val = mode
         
         # 电源位：Bit 3 of Byte3 (值为 0x08)
         power_bit = 0x08 if power_on else 0x00
@@ -206,7 +186,7 @@ class GreeAC:
             # Byte3 (索引 3) 的 Bit 3 (0x08) 是电源位，清除它
             off_data[3] = off_data[3] & 0xF7  # 清除 Bit 3
             # 重新计算校验和
-            off_data[7] = self._calculate_checksum(off_data[:7])
+            off_data[7] = self._calculate_checksum(off_data)
             self.send_raw(off_data)
             time.sleep_ms(40)
             self.send_raw(off_data)

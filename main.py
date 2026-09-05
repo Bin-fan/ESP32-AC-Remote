@@ -1,5 +1,4 @@
 import time
-from machine import Timer
 from gree_ac_control import GreeAC
 import config
 
@@ -25,6 +24,14 @@ task_triggered = False
 last_trigger_time = None
 is_ac_on = False
 ac_on_timestamp = 0
+
+# 时间可信的最低年份：NTP 同步失败且设备掉过电时，RTC 会回到 2000 年附近，
+# 年份小于该值说明时间不可靠，此时不触发定时任务，防止在错误的时刻开机
+MIN_TRUSTED_YEAR = 2026
+
+# 时间不可靠警告的打印间隔（秒），避免主循环每秒刷屏
+TIME_WARN_INTERVAL = 1800
+last_time_warn = 0
 
 # --- 2026年中国节假日与调休工作日 ---
 # 节假日 (月, 日)
@@ -59,17 +66,17 @@ def is_workday(year, month, day, weekday):
         return True
     if (month, day) in HOLIDAYS:
         return False
-    if weekday >= 5: 
+    if weekday >= 5:
         return False
     return True
 
-def check_and_run(timer):
+def check_schedule():
     """
-    定时器回调函数 (每30秒执行一次)
-    仅负责检查时间标志，不执行耗时操作
+    检查是否到达触发时间（在主循环中每秒调用一次）
+    满足条件时置位 task_triggered，由 manage_ac_task() 消费执行
     """
-    global task_triggered, last_trigger_time
-    
+    global task_triggered, last_trigger_time, last_time_warn
+
     current_cst_time = time.localtime()
     year = current_cst_time[0]
     month = current_cst_time[1]
@@ -77,16 +84,24 @@ def check_and_run(timer):
     hour = current_cst_time[3]
     minute = current_cst_time[4]
     weekday = current_cst_time[6]
-    
+
+    # 时间未同步（如 NTP 失败且设备掉过电），RTC 处于上电默认值，不能触发
+    if year < MIN_TRUSTED_YEAR:
+        now = time.time()
+        if now - last_time_warn >= TIME_WARN_INTERVAL:
+            last_time_warn = now
+            print(f"[警告] 系统时间可疑（{year} 年），可能未完成 NTP 同步，暂停定时检查。")
+        return
+
     # 构造当前时间标记 (用于防重复)
     current_time_mark = (year, month, day, hour, minute)
 
     # 判断条件：是工作日 且 到达目标时间 且 本分钟内未触发过
-    if (is_workday(year, month, day, weekday) and 
-        hour == TARGET_HOUR and 
-        minute == TARGET_MINUTE and 
+    if (is_workday(year, month, day, weekday) and
+        hour == TARGET_HOUR and
+        minute == TARGET_MINUTE and
         last_trigger_time != current_time_mark):
-        
+
         task_triggered = True
         last_trigger_time = current_time_mark
         print(f"[定时触发] 检测到工作日 {TARGET_HOUR}:{TARGET_MINUTE}，准备执行空调启动任务...")
@@ -97,10 +112,10 @@ def manage_ac_task():
     处理开机、计时、关机逻辑
     """
     global task_triggered, is_ac_on, ac_on_timestamp
-    
+
     if task_triggered:
         task_triggered = False  # 重置标志
-        
+
         if ac is None:
             print("错误：空调控制器未初始化，跳过执行。")
             return
@@ -139,21 +154,16 @@ def main():
     print(f"目标时间：{TARGET_HOUR}:{TARGET_MINUTE}")
     print(f"运行时长：{AC_RUN_DURATION}秒")
     print("="*30)
-    
-    # 初始化定时器 (30秒周期)
-    timer = Timer(0)
-    timer.init(period=30000, mode=Timer.PERIODIC, callback=check_and_run)
-    
+
     print("定时检测已启动。等待触发时间...")
     print(f"当前时间：{time.localtime()}")
-    
-    # 主循环
+
+    # 主循环：每秒检查一次定时条件并管理空调任务
+    # 不使用硬件 Timer 回调，避免在中断上下文中打印和分配内存
+    # 如果需要更精确的关机计时，可减小下方 sleep 时长
     while True:
-        # 检查并执行空调任务
+        check_schedule()
         manage_ac_task()
-        
-        # 短暂休眠，避免占用过多CPU，同时保持看门狗安全
-        # 如果需要更精确的关机计时，可减小此值
         time.sleep(1)
 
 if __name__ == "__main__":
