@@ -61,7 +61,6 @@
 | `WIFI_CONNECT_TIMEOUT` | WiFi 连接超时时间（秒） | `15` |
 | `NTP_SERVER` | NTP 时间服务器 | `"ntp1.aliyun.com"` |
 | `TIMEZONE_OFFSET` | 时区偏移（小时） | `8` (中国 UTC+8) |
-| `LED_PIN` | LED 指示灯 GPIO 引脚 | `2` |
 | `TARGET_HOUR` | 空调定时开启时间（小时，24 小时制） | `7` |
 | `TARGET_MINUTE` | 空调定时开启时间（分钟） | `20` |
 | `IR_PIN` | 红外发射模块 GPIO 引脚 | `4` |
@@ -69,6 +68,7 @@
 | `AC_TEMP` | 目标温度（16-30°C） | `26` |
 | `AC_FAN` | 风速：0=自动，1=低，2=中，3=高 | `0` |
 | `AC_RUN_DURATION` | 空调运行时长（秒） | `300` |
+| `LED_PIN` | LED 指示灯 GPIO 引脚 | `2` |
 
 ### 使用步骤
 
@@ -130,17 +130,18 @@ GND     -----> GND
 
 ### 3. 配置步骤
 
-#### 修改 WiFi 配置 (`boot.py`)
+编辑 `config.py` 文件，修改以下配置项：
+
 ```python
+# WiFi 配置
 WIFI_SSID = "你的 WiFi 名称"
 WIFI_PASSWORD = "你的 WiFi 密码"
-WIFI_CONNECT_TIMEOUT = 15  # 连接超时时间（秒）
-```
 
-#### 修改定时配置 (`main.py`)
-```python
-TARGET_HOUR = 7           # 目标触发时间（小时，24 小时制）
+# 空调定时开启时间 (24 小时制)
+TARGET_HOUR = 7           # 目标触发时间（小时）
 TARGET_MINUTE = 20        # 目标触发时间（分钟）
+
+# 空调控制参数
 IR_PIN = 4                # 红外发射引脚
 AC_MODE = 1               # 0:自动，1:制冷，2:除湿，3:送风，4:制热
 AC_TEMP = 26              # 目标温度 (16-30)
@@ -149,7 +150,7 @@ AC_RUN_DURATION = 300     # 运行时长（秒）
 ```
 
 #### 配置节假日 (`main.py`)
-编辑 `HOLIDAYS` 和 `ADJUSTED_WORKDAYS` 列表以匹配当前年份的放假安排。
+编辑 `main.py` 中的 `HOLIDAYS` 和 `ADJUSTED_WORKDAYS` 列表以匹配当前年份的放假安排。
 
 ### 4. 上传代码
 
@@ -184,20 +185,33 @@ from gree_ac_control import GreeAC
 ac = GreeAC(pin_num=4)
 
 # 开机（制冷模式，26°C，自动风速）
+# 注意：格力协议模式定义：0=自动，1=制冷，2=除湿，3=送风，4=制热
 ac.turn_on(mode=1, temp=26, fan=0)
 
 # 关机
 ac.turn_off()
 ```
 
+### 使用 config.py 配置参数
+```python
+import config
+from gree_ac_control import GreeAC
+
+# 从配置文件读取参数
+ac = GreeAC(pin_num=config.IR_PIN)
+
+# 使用配置的参数启动空调
+ac.turn_on(mode=config.AC_MODE, temp=config.AC_TEMP, fan=config.AC_FAN)
+```
+
 ### 定时任务逻辑
-系统每分钟检查一次当前时间，当满足以下条件时触发空调：
-1. 当前时间等于设定的目标时间
+系统每 30 秒检查一次当前时间，当满足以下条件时触发空调：
+1. 当前时间等于设定的目标时间（TARGET_HOUR:TARGET_MINUTE）
 2. 今天不是节假日
 3. 如果是周末，必须是调休工作日
 4. 当天尚未触发过
 
-触发后空调将运行设定的时长，然后自动关闭。
+触发后空调将运行设定的时长（AC_RUN_DURATION），然后自动关闭。
 
 ## 注意事项
 
