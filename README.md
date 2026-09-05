@@ -43,14 +43,15 @@
 - `gree_ac_control.py` - 主控制脚本，包含 GreeAC 类和使用示例
 - `main.py` - 自动定时控制器主程序
 - `boot.py` - ESP32 启动脚本，负责 WiFi 连接和时间同步
-- `config.py` - **敏感配置文件**（WiFi 密码等，请勿提交到版本控制系统）
+- `config.py` - 配置文件（仓库中为空白模板，填入真实 WiFi 凭据后请勿提交到版本控制系统）
 - `README.md` - 项目文档
 
 ### 安全说明
 
 **重要安全提示：**
-1. `config.py` 文件包含您的 WiFi 凭据等敏感信息
+1. 仓库中的 `config.py` 是空白模板，不包含真实凭据
 2. 首次使用时，请根据您的实际情况修改 `config.py` 中的配置
+3. 填入真实 WiFi 凭据后，请勿再将 `config.py` 提交到版本控制系统（可取消 `.gitignore` 中对应行的注释）
 
 #### config.py 配置项说明
 
@@ -175,6 +176,8 @@ ESP32 重启后会自动执行 `boot.py` 连接 WiFi 并同步时间，然后运
 - **前导码**: 9ms 低 + 4.5ms 高
 - **数据包**: 9 字节（第 7 字节为校验和）
 
+> ⚠️ **机型适配说明**：上述帧格式（9 字节、帧头 `0x0C 0x00 0xA0`、高位先发、校验和为前 7 字节之和）是针对作者自有格力机型逆向所得，与 IRremoteESP8266 中的经典 Gree 帧（8 字节、低位先发、Kelvinator 式校验和）并不相同。不同代际的格力遥控器帧格式可能不同，更换机型前请先用 `ir_receiver_test.py` 抓取自家遥控器的原始时序进行核对。
+
 ## 使用示例
 
 ### 基本控制
@@ -186,10 +189,10 @@ ac = GreeAC(pin_num=4)
 
 # 开机（制冷模式，26°C，自动风速）
 # 注意：格力协议模式定义：0=自动，1=制冷，2=除湿，3=送风，4=制热
-ac.turn_on(mode=1, temp=26, fan=0)
+ac.power_on(mode=1, temp=26, fan=0)
 
 # 关机
-ac.turn_off()
+ac.power_off()
 ```
 
 ### 使用 config.py 配置参数
@@ -201,15 +204,16 @@ from gree_ac_control import GreeAC
 ac = GreeAC(pin_num=config.IR_PIN)
 
 # 使用配置的参数启动空调
-ac.turn_on(mode=config.AC_MODE, temp=config.AC_TEMP, fan=config.AC_FAN)
+ac.power_on(mode=config.AC_MODE, temp=config.AC_TEMP, fan=config.AC_FAN)
 ```
 
 ### 定时任务逻辑
-系统每 30 秒检查一次当前时间，当满足以下条件时触发空调：
-1. 当前时间等于设定的目标时间（TARGET_HOUR:TARGET_MINUTE）
-2. 今天不是节假日
-3. 如果是周末，必须是调休工作日
-4. 当天尚未触发过
+系统主循环每 1 秒检查一次当前时间，当满足以下条件时触发空调：
+1. 系统时间可信（已通过 NTP 同步，年份不早于 2026，防止 RTC 默认时间误触发）
+2. 当前时间等于设定的目标时间（TARGET_HOUR:TARGET_MINUTE）
+3. 今天不是节假日
+4. 如果是周末，必须是调休工作日
+5. 本分钟内尚未触发过
 
 触发后空调将运行设定的时长（AC_RUN_DURATION），然后自动关闭。
 
