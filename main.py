@@ -1,28 +1,23 @@
 import time
 from machine import Timer
 from gree_ac_control import GreeAC
+import config
 
-# ================= 配置区域 =================
-# 目标触发时间 (24小时制)
-TARGET_HOUR = 7
-TARGET_MINUTE = 20
-
-# 空调红外发射引脚 (请根据实际接线修改，默认为 GPIO 4)
-IR_PIN = 4
-
-# 空调启动参数
-AC_MODE = 1       # 0:自动, 1:制冷, 2:除湿, 3:送风, 4:制热
-AC_TEMP = 26      # 目标温度 (16-30)
-AC_FAN = 0        # 0:自动, 1:低, 2:中, 3:高
-AC_RUN_DURATION = 300  # 空调开启后运行时长 (秒)，例如 300秒=5分钟。若需长期开启可设极大值或注释掉关闭逻辑
-# ===========================================
+# 从 config 模块导入控制配置
+TARGET_HOUR = config.TARGET_HOUR
+TARGET_MINUTE = config.TARGET_MINUTE
+IR_PIN = config.IR_PIN
+AC_MODE = config.AC_MODE
+AC_TEMP = config.AC_TEMP
+AC_FAN = config.AC_FAN
+AC_RUN_DURATION = config.AC_RUN_DURATION
 
 # 初始化空调控制器
 try:
     ac = GreeAC(pin=IR_PIN)
     print(f"红外空调控制器已初始化 (GPIO {IR_PIN})")
 except Exception as e:
-    print(f"红外控制器初始化失败: {e}")
+    print(f"红外控制器初始化失败：{e}")
     ac = None
 
 # 状态标志

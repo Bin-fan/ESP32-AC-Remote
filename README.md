@@ -50,12 +50,21 @@ ESP32 配合 MicroPython 和 HS-S29P 红外发射模块，实现对格力空调�
 | `NTP_SERVER` | NTP 时间服务器 | `"ntp1.aliyun.com"` |
 | `TIMEZONE_OFFSET` | 时区偏移（小时） | `8` (中国 UTC+8) |
 | `LED_PIN` | LED 指示灯 GPIO 引脚 | `2` |
+| `TARGET_HOUR` | 空调定时开启时间（小时，24 小时制） | `7` |
+| `TARGET_MINUTE` | 空调定时开启时间（分钟） | `20` |
+| `IR_PIN` | 红外发射模块 GPIO 引脚 | `4` |
+| `AC_MODE` | 空调模式：0=自动，1=制冷，2=除湿，3=送风，4=制热 | `1` |
+| `AC_TEMP` | 目标温度（16-30°C） | `26` |
+| `AC_FAN` | 风速：0=自动，1=低，2=中，3=高 | `0` |
+| `AC_RUN_DURATION` | 空调运行时长（秒） | `300` |
 
 ### 使用步骤
 
-1. **配置 WiFi 和网络**
-   - 编辑 `config.py` 文件，填入您的 WiFi 名称和密码
+1. **配置所有参数**
+   - 编辑 `config.py` 文件
+   - 填入您的 WiFi 名称和密码
    - 根据需要修改 NTP 服务器和时区设置
+   - 调整空调控制参数：定时时间、运行模式、温度、风速、运行时长等
 
 2. **上传文件到 ESP32**
    - 使用 Thonny、ampy 或其他 MicroPython IDE
@@ -69,7 +78,7 @@ ESP32 配合 MicroPython 和 HS-S29P 红外发射模块，实现对格力空调�
 
 4. **运行空调控制**
    - `main.py` 会自动运行定时任务
-   - 可修改 `main.py` 中的定时时间和空调参数
+   - 如需修改定时参数，编辑 `config.py` 后重启设备
 
 ### 硬件连接
 
