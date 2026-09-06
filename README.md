@@ -48,6 +48,7 @@
 - `main.py` - 自动定时控制器主程序
 - `boot.py` - ESP32 启动脚本，负责 WiFi 连接和时间同步
 - `config.py` - 配置文件（仓库中为空白模板，填入真实 WiFi 凭据后请勿提交到版本控制系统）
+- `manual_trigger.py` - 手动触发测试脚本（REPL 菜单：开机 / 关机 / 完整流程 / 查看配置，用于真机调试红外）
 - `README.md` - 项目文档
 
 ### 安全说明
@@ -165,6 +166,7 @@ AC_RUN_DURATION = 300     # 运行时长（秒）
 - `gree_ac_control.py`
 
 > `ir_receiver_test.py` 仅在需要学习红外遥控码时上传使用。
+> `manual_trigger.py` 仅在需要手动测试空调控制时通过 Thonny 运行使用（不影响 `main.py` 的定时任务）。
 
 ### 5. 运行
 
